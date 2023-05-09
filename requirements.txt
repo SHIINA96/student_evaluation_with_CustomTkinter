@@ -3,3 +3,7 @@ pillow
 docxtpl
 python-docx
 docx2pdf
+openpyxl
+requests
+ics
+python-dotenv

@@ -1,56 +1,50 @@
 import tkinter
 import tkinter.messagebox
 import customtkinter
-import os, shutil
+import os, shutil, requests, datetime, time
 
+from ics import Calendar
+from dateutil.relativedelta import relativedelta
+from openpyxl import load_workbook
 from tkinter import filedialog
 from PIL import Image, ExifTags
 from docxtpl import DocxTemplate
 from docx import Document
 from docx2pdf import convert
 from docx.shared import Cm
+from dotenv import load_dotenv
 
-
+load_dotenv()
+calender_url = os.environ.get('CALENDAR_URL')
 customtkinter.set_appearance_mode("Light")  # Modes: "System" (standard), "Dark", "Light"
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
 
-# create toplevel
-# 课时统计
-# class ToplevelWindow(customtkinter.CTkToplevel):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         # self. geometry("600x200")
-
-#         normal_font = customtkinter.CTkFont(family="微软雅黑", size=13, weight="bold")
-
-#         self.geometry("460x150")
-#         self.title("课时统计设置")
-
-#         self.grid_columnconfigure(1, weight=1)
-#         self.grid_columnconfigure((2, 3), weight=0)
-#         self.grid_rowconfigure((0, 1, 2), weight=1)
-
-#         self.entry_url = customtkinter.CTkEntry(self, placeholder_text="输入日历链接", font=normal_font)
-#         self.entry_url.grid(row=0, column=0, columnspan=3, padx=(20,0), pady=(50,2), sticky="ew")
-
-#         global url
-#         self.button1 = customtkinter.CTkButton(master=self, text="生成统计", font=normal_font, command=self.generate_classhour_statistics_event)
-#         self.button1.grid(row=0, column=3, padx=(2,20), pady=(50,2), sticky="ew")
-
-
-class InfoWindow(customtkinter.CTkToplevel):
+class info_window(customtkinter.CTkToplevel):
     def __init__(self, info, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self. geometry("300*100")
+        self.geometry("400*100")
+        self.title('错误')
 
         normal_font = customtkinter.CTkFont(family="微软雅黑", size=13, weight="bold")
-
-        # generate_class_comments_info = '已生成' + ' ' + student_name + '_' + lessonName + ' ' + '课评报告'
-        info = info
-
         self.label = customtkinter.CTkLabel(self, text=info, font=normal_font)
-        self.label.pack(padx=20, pady=20)
+        self.label.pack(padx=(50,50), pady=(30,30))
+
+class progress_bar_window(customtkinter.CTkToplevel):
+    def __init__(self, info, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.geometry("400*100")
+        self.title('处理中')
+
+        info = '请稍后'
+        normal_font = customtkinter.CTkFont(family="微软雅黑", size=13, weight="bold")
+        
+        self.label = customtkinter.CTkLabel(self, text=info, font=normal_font)
+        self.label.grid(row=0, column=0, padx=(50,50), pady=(30,5))
+        self.progressbar = customtkinter.CTkProgressBar(self)
+        self.progressbar.grid(row=1, column=0, padx=(100, 100), pady=(5, 50), sticky="ew")
+        self.progressbar.configure(mode="indeterminnate")
+        self.progressbar.start()
         
 
 
@@ -64,7 +58,7 @@ class App(customtkinter.CTk):
         self.toplevel_window = None
 
         # configure window
-        self.title("Future X Baotou.py")
+        self.title("Future X Baotou")
         self.geometry(f"{1000}x{580}")
 
         # configure grid layout (4x4)
@@ -76,22 +70,31 @@ class App(customtkinter.CTk):
         self.sidebar_frame = customtkinter.CTkFrame(self, width=140, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, rowspan=6, sticky="nsew")
         self.sidebar_frame.grid_rowconfigure(4, weight=1)
-        self.logo_label = customtkinter.CTkLabel(self.sidebar_frame, text="课评报告生成器", font=title_font)
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+
+        self.appearance_mode_label = customtkinter.CTkLabel(self.sidebar_frame, text="课程类别:", font=normal_font, anchor="w")
+        self.appearance_mode_label.grid(row=0, column=0, padx=20, pady=(20, 0))
+
+        self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"], command=self.change_appearance_mode_event)
+        self.appearance_mode_optionemenu.grid(row=1, column=0, padx=20, pady=(5, 10))
+
+        self.scaling_label = customtkinter.CTkLabel(self.sidebar_frame, text="课程选择:", font=normal_font, anchor="w")
+        self.scaling_label.grid(row=2, column=0, padx=20, pady=(10, 0))
+        
+        self.scaling_optionemenu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["80%", "90%", "100%", "110%", "120%"], command=self.change_scaling_event)
+        self.scaling_optionemenu.grid(row=3, column=0, padx=20, pady=(5, 20))
+
         self.sidebar_button_generate_report = customtkinter.CTkButton(self.sidebar_frame, command=self.genereate_report_event)
-        self.sidebar_button_generate_report.grid(row=1, column=0, padx=20, pady=10)
+        self.sidebar_button_generate_report.grid(row=6, column=0, padx=20, pady=10)
+
         self.sidebar_button_convert_2_PDF = customtkinter.CTkButton(self.sidebar_frame, command=self.convert_2_PDF_event)
-        self.sidebar_button_convert_2_PDF.grid(row=2, column=0, padx=20, pady=10)
+        self.sidebar_button_convert_2_PDF.grid(row=7, column=0, padx=20, pady=10)
+
+        self.sidebar_button_statistics = customtkinter.CTkButton(self.sidebar_frame, command=self.statistics_event)
+        self.sidebar_button_statistics.grid(row=8, column=0, padx=20, pady=10)
+
         # self.sidebar_button_3 = customtkinter.CTkButton(self.sidebar_frame, command=self.sidebar_button_event)
         # self.sidebar_button_3.grid(row=3, column=0, padx=20, pady=10)
-        self.appearance_mode_label = customtkinter.CTkLabel(self.sidebar_frame, text="课程类别:", font=normal_font, anchor="w")
-        self.appearance_mode_label.grid(row=5, column=0, padx=20, pady=(10, 0))
-        self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"], command=self.change_appearance_mode_event)
-        self.appearance_mode_optionemenu.grid(row=6, column=0, padx=20, pady=(10, 10))
-        self.scaling_label = customtkinter.CTkLabel(self.sidebar_frame, text="课程选择:", font=normal_font, anchor="w")
-        self.scaling_label.grid(row=7, column=0, padx=20, pady=(10, 0))
-        self.scaling_optionemenu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["80%", "90%", "100%", "110%", "120%"], command=self.change_scaling_event)
-        self.scaling_optionemenu.grid(row=8, column=0, padx=20, pady=(10, 20))
+        
 
 
         # 主文本框
@@ -165,6 +168,7 @@ class App(customtkinter.CTk):
         # self.sidebar_button_3.configure(state="disabled", text="Disabled CTkButton")
         self.sidebar_button_generate_report.configure(text="生成报告", font=normal_font)
         self.sidebar_button_convert_2_PDF.configure(text="PDF转换", font=normal_font)
+        self.sidebar_button_statistics.configure(text="课时统计", font=normal_font)
         self.button_select_template.configure(text="选择模板", font=normal_font)
         self.button_select_photos.configure(text="选择照片", font=normal_font)
         self.button_saving_location.configure(text="选择保存位置", font=normal_font)
@@ -183,11 +187,11 @@ class App(customtkinter.CTk):
         self.seg_button_5.set("3")
 
     # 按钮功能
-    def open_input_dialog_event(self):
-        dialog = customtkinter.CTkInputDialog(text="Type in a number:", title="CTkInputDialog")
-        print("CTkInputDialog:", dialog.get_input())
+    # def open_input_dialog_event(self):
+    #     dialog = customtkinter.CTkInputDialog(text="Type in a number:", title="CTkInputDialog")
+    #     print("CTkInputDialog:", dialog.get_input())
 
-    def genereate_report_event(self):
+    def genereate_report_event(self):   # 生成课程评价，并添加照片
         dir_path = os.path.dirname(os.path.realpath(__file__))
 
         pict = Image.open(f_path[0])
@@ -277,19 +281,14 @@ class App(customtkinter.CTk):
                 # 移动照片与课评文档至保存路径中
                 shutil.move(dir_path+'/'+picNameStandard, saving_location+'/'+student_name+'/'+picNameStandard)
                 shutil.move(dir_path+'/'+documentName, saving_location+'/'+student_name+'/'+documentName)
-                
-                if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
-                    info = '已生成' + ' ' + student_name + '_' + lessonName + ' ' + '课评报告'
-                    self.toplevel_window = InfoWindow(info=info)  # create window if its None or destroyed
-                else:
-                    self.toplevel_window.focus()  # if window exists focus it
+                info = '已生成' + ' ' + student_name + '_' + lessonName + ' ' + '课评报告'
+                self.pass_info_2_top_level(info=info)
 
             except (AttributeError, KeyError, IndexError):
                 # cases: image don't have getexif
                 print('no need to process!')
 
-        
-    def select_template_event(self):
+    def select_template_event(self):    # 选择课程评价模版
         self.entry_template.delete("0", "end")
         root = tkinter.Tk()
         root.withdraw()
@@ -298,7 +297,7 @@ class App(customtkinter.CTk):
         doc_path = filedialog.askopenfilename(initialdir=(os.getcwd()+'\\assest\\课程评价'))
         self.entry_template.insert("0", doc_path)
 
-    def select_photo_event(self):
+    def select_photo_event(self):   # 选择课程评价中的照片
         self.entry_1.delete("0", "end")
         root = tkinter.Tk()
         root.withdraw()
@@ -312,15 +311,24 @@ class App(customtkinter.CTk):
         print(photo_name_string)
         self.entry_1.insert("0", photo_name_string)
 
-    def saving_location_event(self):
+    def saving_location_event(self):    # 使用tk窗口打开保存目录
         self.entry_2.delete("0", "end")
         root = tkinter.Tk()
         root.withdraw()
         global saving_location
         saving_location = filedialog.askdirectory()
         self.entry_2.insert("0", saving_location)
+        # 使用保存目录按钮测试弹出窗口
+        # if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
+        #     self.toplevel_window = progress_bar_window(self)  # create window if its None or destroyed
+        # else:
+        #     self.toplevel_window.focus()  # if window exists focus it
 
-    def convert_2_PDF_event(self):
+        # time.sleep(3)
+        # self.toplevel_window.destroy()
+        
+
+    def convert_2_PDF_event(self):  # 将保存目录中的word文件全部转换为pdf文件
         try:
             shutil.rmtree('temp')
         except:
@@ -343,8 +351,12 @@ class App(customtkinter.CTk):
         output = CrossOver(folder_path, file_list)   # 执行函数，输出结果
         print('已获取' + folder_path + '中的' + str(output) + '个文件')
         
+        info = '正在转换中'
+        # self.pass_info_2_progress_bar_top_level(info=info)
         convert('temp/')    # 批量转换保存目录中的word文档
+        # self.toplevel_window.destroy()
         
+
         count = 0
         for old_file in os.listdir('temp'):
             if os.path.split(old_file)[1].endswith('.pdf'):
@@ -353,12 +365,110 @@ class App(customtkinter.CTk):
                 shutil.copyfile('temp/'+old_file, new_file)
         shutil.rmtree('temp')
 
+        info = '已转换' + str(count) + '个文件为PDF'
+        self.pass_info_2_top_level(info=info)
+
+    def statistics_event(self):     # 课时统计按钮，弹出窗口并输入月份
+        dialog = customtkinter.CTkInputDialog(text="输入需要导出的月份:", title="课时统计")
+        month = int(dialog.get_input())
+        self.statistics(month)
+        # print('正在导出', dialog.get_input(),'月课时统计')
+    
+    def statistics(self, month):     # 统计本月的教师课时
+        c = Calendar(requests.get(calender_url).text)
+
+        now = datetime.datetime.now()
+        year = now.year
+        month = month
+
+        start_date = datetime.date(year,month,1)
+        end_date = start_date + relativedelta(months=1)
+
+        new_file_name = '图图'+str(year)+'年'+str(month)+'月课时统计.xlsx'
+
+        e = list(c.timeline)    # 日历中的全部事件
+
+        class_in_total = []
+        for calender_event in e:    # 将事件添加到class_in_total中
+            current_class = []
+            if calender_event.begin.date() >= start_date and calender_event.begin.date() < end_date: # 筛选指定日期内的事件
+                try:
+                    c1ass = calender_event.name.split(' ')[0]
+                    student = len(calender_event.name.split(' ')[1:])
+                    class_date = calender_event.begin.format('YYYY-MM-DD HH:mm').split(' ')[0]
+                    class_time = calender_event.begin.format('YYYY-MM-DD HH:mm').split(' ')[1]
+                    current_class.append(c1ass)
+                    current_class.append(class_date)
+                    current_class.append(class_time)
+                    current_class.append(student)
+                except IndexError:
+                    pass
+
+                class_in_total.append(current_class)
+        class_in_total.sort()
+        print('日历中共有'+str(len(class_in_total))+'项日程')
+
+        wb = load_workbook(filename = 'assest/教师课时统计表模板.xlsx')
+        ws = wb.active
+
+        cols = {'启蒙':2, '玛塔':5, '程小奔':5, '探究':8, '工程':11, 'Scratch':14, 'Python':14, '南开':17, '普林斯顿':17, '博苑澳森':17, '考古营':24, '医学营':24}
+
+        def insert_course_information(calender_list_item, course):  # 将内容添加至excel中
+            time_value = datetime.datetime.strptime(calender_list_item[1],'%Y-%m-%d')   # 整理时间格式
+            time_value = time_value.strftime('%m月%d日')
+            if calender_list_item[0] == course:
+                row = 5     # 固定在第5行开始
+                if course not in cols.keys():   # 跳过日历中的其他事项
+                    print('未添加 ',time_value,course)
+                else:
+                    col = cols[course]  # 从cols中获取课程所在列
+
+                    while ws.cell(row=row, column=col).value != None :  # 判断该单元格是否为空
+                        # print(str(row) + ' ' +str(col) + ' is not empty')
+                        row += 1
+                        if ws.cell(row=row, column=col).value == None:
+                            break
+
+                    if course in ('南开','普林斯顿','博苑澳森'):    # 课程格式不同
+                        ws.cell(row=row, column=col, value=course)
+                        ws.cell(row=row, column=col+1, value=time_value)
+                        ws.cell(row=row, column=col+2, value=calender_list_item[2])
+                        ws.cell(row=row, column=col+3, value=calender_list_item[3])
+                        print('已添加',time_value,course,calender_list_item[3],'人')
+                        row += 1
+                        wb.save(filename='教师课时统计表模板.xlsx')
+                    else:
+                        ws.cell(row=row, column=col, value=time_value)
+                        ws.cell(row=row, column=col+1, value=calender_list_item[2])
+                        ws.cell(row=row, column=col+2, value=calender_list_item[3])
+                        print('已添加',time_value,course,calender_list_item[3],'人')
+                        row += 1
+                        wb.save(filename='教师课时统计表模板.xlsx')
+
+        for item in class_in_total:
+            insert_course_information(item, item[0])
+        print('已导入'+str(len(class_in_total))+'项日程')
+
+        os.rename('教师课时统计表模板.xlsx', new_file_name)
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        try:
+            shutil.move(dir_path+'/'+new_file_name, saving_location+'/'+new_file_name)
+        except NameError:
+            self.pass_info_2_top_level(info='未选择保存目录')
+            os.remove(new_file_name)
+
+
+    def pass_info_2_top_level(self, info):
         if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
-            info = '已转换' + str(count) + '个文件为PDF'
-            self.toplevel_window = InfoWindow(info=info)  # create window if its None or destroyed
+            self.toplevel_window = info_window(info=info)  # create window if its None or destroyed
         else:
             self.toplevel_window.focus()  # if window exists focus it
 
+    def pass_info_2_progress_bar_top_level(self, info):
+        if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
+            self.toplevel_window = progress_bar_window(info=info)  # create window if its None or destroyed
+        else:
+            self.toplevel_window.focus()  # if window exists focus it
 
     def change_appearance_mode_event(self, new_appearance_mode: str):
         customtkinter.set_appearance_mode(new_appearance_mode)
@@ -367,11 +477,6 @@ class App(customtkinter.CTk):
         new_scaling_float = int(new_scaling.replace("%", "")) / 100
         customtkinter.set_widget_scaling(new_scaling_float)
 
-    # def class_hour_statistic_button_event(self):
-    #     if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
-    #         self.toplevel_window = ToplevelWindow(self)  # create window if its None or destroyed
-    #     else:
-    #         self.toplevel_window.focus()  # if window exists focus it
         
 
 
