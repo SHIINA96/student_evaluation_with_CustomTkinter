@@ -1,3 +1,4 @@
 assest
 venv
 .env
+.DS_Store

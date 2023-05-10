@@ -3,6 +3,7 @@ import tkinter.messagebox
 import customtkinter
 import os, shutil, requests, datetime, time
 
+from threading import Thread
 from ics import Calendar
 from dateutil.relativedelta import relativedelta
 from openpyxl import load_workbook
@@ -14,37 +15,42 @@ from docx2pdf import convert
 from docx.shared import Cm
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv()   # 使用dotenv保存日历链接
 calender_url = os.environ.get('CALENDAR_URL')
 customtkinter.set_appearance_mode("Light")  # Modes: "System" (standard), "Dark", "Light"
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
 
 class info_window(customtkinter.CTkToplevel):
-    def __init__(self, info, *args, **kwargs):
+    def __init__(self, info, progress_bar=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.geometry("400*100")
-        self.title('错误')
+        # self.geometry("400*100")
 
-        normal_font = customtkinter.CTkFont(family="微软雅黑", size=13, weight="bold")
-        self.label = customtkinter.CTkLabel(self, text=info, font=normal_font)
-        self.label.pack(padx=(50,50), pady=(30,30))
+        window_width = 400
+        window_height = 100
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()-100
+        x_cordinate = int((screen_width/2) - (window_width/2))
+        y_cordinate = int((screen_height/2) - (window_height/2))
+        # self.geometry(f"{1000}x{580}")
+        self.geometry("{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
 
-class progress_bar_window(customtkinter.CTkToplevel):
-    def __init__(self, info, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.geometry("400*100")
-        self.title('处理中')
-
-        info = '请稍后'
         normal_font = customtkinter.CTkFont(family="微软雅黑", size=13, weight="bold")
         
-        self.label = customtkinter.CTkLabel(self, text=info, font=normal_font)
-        self.label.grid(row=0, column=0, padx=(50,50), pady=(30,5))
-        self.progressbar = customtkinter.CTkProgressBar(self)
-        self.progressbar.grid(row=1, column=0, padx=(100, 100), pady=(5, 50), sticky="ew")
-        self.progressbar.configure(mode="indeterminnate")
-        self.progressbar.start()
+        if progress_bar:
+            self.title('处理中')
+            # info = '请稍后'
+            self.label = customtkinter.CTkLabel(self, text=info, font=normal_font)
+            self.label.grid(row=0, column=0, padx=(50,50), pady=(30,5))
+            self.progressbar = customtkinter.CTkProgressBar(self)
+            self.progressbar.grid(row=1, column=0, padx=(100, 100), pady=(5, 50), sticky="ew")
+            self.progressbar.configure(mode="indeterminnate")
+            self.progressbar.start()
+            
+        else:
+            self.title('错误')
+            self.label = customtkinter.CTkLabel(self, text=info, font=normal_font)
+            self.label.pack(padx=(50,50), pady=(30,30))
         
 
 
@@ -53,13 +59,20 @@ class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
 
-        title_font = customtkinter.CTkFont(family="微软雅黑", size=20, weight="bold")
+        # title_font = customtkinter.CTkFont(family="微软雅黑", size=20, weight="bold")
         normal_font = customtkinter.CTkFont(family="微软雅黑", size=13, weight="bold")
         self.toplevel_window = None
-
+        
         # configure window
         self.title("Future X Baotou")
-        self.geometry(f"{1000}x{580}")
+        window_width = 1000
+        window_height = 580
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()-100
+        x_cordinate = int((screen_width/2) - (window_width/2))
+        y_cordinate = int((screen_height/2) - (window_height/2))
+        # self.geometry(f"{1000}x{580}")
+        self.geometry("{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
 
         # configure grid layout (4x4)
         self.grid_columnconfigure(1, weight=1)
@@ -319,43 +332,56 @@ class App(customtkinter.CTk):
         saving_location = filedialog.askdirectory()
         self.entry_2.insert("0", saving_location)
         # 使用保存目录按钮测试弹出窗口
+        # info = 'wait'
         # if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
-        #     self.toplevel_window = progress_bar_window(self)  # create window if its None or destroyed
+        #     self.toplevel_window = self.pass_info_2_top_level(info=info,progress_bar=True)  # create window if its None or destroyed
         # else:
         #     self.toplevel_window.focus()  # if window exists focus it
-
-        # time.sleep(3)
-        # self.toplevel_window.destroy()
         
 
-    def convert_2_PDF_event(self):  # 将保存目录中的word文件全部转换为pdf文件
+    def convert_2_PDF_event(self):
+        info = '正在转换，请稍后'
+        self.pass_info_2_top_level(info=info, progress_bar=True)
+        
+        global t1
+        t1 = Thread(target=self.convert_2_PDF)
+        t1.start()
+
+    def convert_2_PDF(self):  # 将保存目录中的word文件全部转换为pdf文件
         try:
             shutil.rmtree('temp')
         except:
             os.mkdir('temp')
 
-        folder_path = saving_location
+        try:
+            folder_path = saving_location
+        except NameError:
+            self.toplevel_window.destroy()
+            self.pass_info_2_top_level(info='未选择保存位置')
         file_list = []
+
         def CrossOver(dir, file_list):
-            for i in os.listdir(dir):  # 遍历整个文件夹
-                path = os.path.join(dir, i)
-                if os.path.isfile(path):  # 判断是否为一个文件，排除文件夹
-                    if os.path.splitext(path)[1]==".docx":  # 判断文件扩展名是否为“.docx”
-                        temp_path = 'temp/' + os.path.split(path)[1]
-                        shutil.copy2(path, temp_path)
-                        file_list.append(path)
-                elif os.path.isdir(path):
-                    newdir=path
-                    CrossOver(newdir, file_list)
-            return len(file_list)
+            try:
+                for i in os.listdir(dir):  # 遍历整个文件夹
+                    path = os.path.join(dir, i)
+                    if os.path.isfile(path):  # 判断是否为一个文件，排除文件夹
+                        if os.path.splitext(path)[1]==".docx":  # 判断文件扩展名是否为“.docx”
+                            temp_path = 'temp/' + os.path.split(path)[1]
+                            shutil.copy2(path, temp_path)
+                            file_list.append(path)
+                    elif os.path.isdir(path):
+                        newdir=path
+                        CrossOver(newdir, file_list)
+                return len(file_list)
+            except FileNotFoundError:
+                self.toplevel_window.destroy()
+                self.pass_info_2_top_level(info='未选择保存位置')
+
+
         output = CrossOver(folder_path, file_list)   # 执行函数，输出结果
         print('已获取' + folder_path + '中的' + str(output) + '个文件')
         
-        info = '正在转换中'
-        # self.pass_info_2_progress_bar_top_level(info=info)
         convert('temp/')    # 批量转换保存目录中的word文档
-        # self.toplevel_window.destroy()
-        
 
         count = 0
         for old_file in os.listdir('temp'):
@@ -366,6 +392,9 @@ class App(customtkinter.CTk):
         shutil.rmtree('temp')
 
         info = '已转换' + str(count) + '个文件为PDF'
+        print(info)
+        self.toplevel_window.destroy()
+        time.sleep(0.5)
         self.pass_info_2_top_level(info=info)
 
     def statistics_event(self):     # 课时统计按钮，弹出窗口并输入月份
@@ -458,17 +487,12 @@ class App(customtkinter.CTk):
             os.remove(new_file_name)
 
 
-    def pass_info_2_top_level(self, info):
+    def pass_info_2_top_level(self, info, progress_bar=False):
         if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
-            self.toplevel_window = info_window(info=info)  # create window if its None or destroyed
+            self.toplevel_window = info_window(info=info, progress_bar=progress_bar)  # create window if its None or destroyed
         else:
             self.toplevel_window.focus()  # if window exists focus it
 
-    def pass_info_2_progress_bar_top_level(self, info):
-        if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
-            self.toplevel_window = progress_bar_window(info=info)  # create window if its None or destroyed
-        else:
-            self.toplevel_window.focus()  # if window exists focus it
 
     def change_appearance_mode_event(self, new_appearance_mode: str):
         customtkinter.set_appearance_mode(new_appearance_mode)
