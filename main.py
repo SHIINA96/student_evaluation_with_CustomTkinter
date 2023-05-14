@@ -228,12 +228,21 @@ class App(customtkinter.CTk):
         month = picDate[5:7]
         day = picDate[8:10]
 
-        os.makedirs(saving_location+'/'+student_name+'/')
+        saving_folder = saving_location+'/'+student_name
+        number = 0
+        while True: # 检测保存目录是否存在，存在则在文件夹后增加数字
+            if not os.path.exists(saving_folder):
+                os.makedirs(saving_folder)
+                break
+            else:
+                number += 1
+                saving_folder = saving_folder + str(number)
 
         doc = DocxTemplate(name) #加载模板文件
         document = Document(name)
 
         data_dic = {
+            'teacher_name' : teacher_name,
             'student_name' : student_name,
             'communication' : '★'*(communication-1),
             'creation' : '★'*(creation-1),
@@ -292,8 +301,9 @@ class App(customtkinter.CTk):
                 n = n+1
 
                 # 移动照片与课评文档至保存路径中
-                shutil.move(dir_path+'/'+picNameStandard, saving_location+'/'+student_name+'/'+picNameStandard)
-                shutil.move(dir_path+'/'+documentName, saving_location+'/'+student_name+'/'+documentName)
+                shutil.move(dir_path+'/'+picNameStandard, saving_folder+'/'+picNameStandard)
+                shutil.move(dir_path+'/'+documentName, saving_folder+'/'+documentName)
+                
                 info = '已生成' + ' ' + student_name + '_' + lessonName + ' ' + '课评报告'
                 self.pass_info_2_top_level(info=info)
 
@@ -307,7 +317,7 @@ class App(customtkinter.CTk):
         root.withdraw()
         global doc_path
         # os.startfile(str(os.getcwd())+'\\assest\\课程评价')
-        doc_path = filedialog.askopenfilename(initialdir=(os.getcwd()+'\\assest\\课程评价'))
+        doc_path = filedialog.askopenfilename(initialdir=(os.getcwd()+'/assest/课程评价'))
         self.entry_template.insert("0", doc_path)
 
     def select_photo_event(self):   # 选择课程评价中的照片
