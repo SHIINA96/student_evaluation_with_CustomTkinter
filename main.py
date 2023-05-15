@@ -15,6 +15,8 @@ from docx2pdf import convert
 from docx.shared import Cm
 from dotenv import load_dotenv
 
+
+basedir = os.path.dirname(__file__)
 load_dotenv()   # 使用dotenv保存日历链接
 calender_url = os.environ.get('CALENDAR_URL')
 customtkinter.set_appearance_mode("Light")  # Modes: "System" (standard), "Dark", "Light"
@@ -34,6 +36,7 @@ class info_window(customtkinter.CTkToplevel):
         y_cordinate = int((screen_height/2) - (window_height/2))
         # self.geometry(f"{1000}x{580}")
         self.geometry("{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+        self.attributes('-topmost', 'true')
 
         normal_font = customtkinter.CTkFont(family="微软雅黑", size=13, weight="bold")
         
@@ -317,7 +320,7 @@ class App(customtkinter.CTk):
         root.withdraw()
         global doc_path
         # os.startfile(str(os.getcwd())+'\\assest\\课程评价')
-        doc_path = filedialog.askopenfilename(initialdir=(os.getcwd()+'/assest/课程评价'))
+        doc_path = filedialog.askopenfilename(initialdir=(basedir+'/assest/课程评价'))
         self.entry_template.insert("0", doc_path)
 
     def select_photo_event(self):   # 选择课程评价中的照片
@@ -492,6 +495,7 @@ class App(customtkinter.CTk):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         try:
             shutil.move(dir_path+'/'+new_file_name, saving_location+'/'+new_file_name)
+            self.pass_info_2_top_level(info='已生成'+' '+new_file_name)
         except NameError:
             self.pass_info_2_top_level(info='未选择保存目录')
             os.remove(new_file_name)
@@ -511,9 +515,18 @@ class App(customtkinter.CTk):
         new_scaling_float = int(new_scaling.replace("%", "")) / 100
         customtkinter.set_widget_scaling(new_scaling_float)
 
-        
-
+    
 
 if __name__ == "__main__":
+    # root.protocol("WM_DELETE_WINDOW", _quit)
     app = App()
+    def quit():
+        app.quit()
+        app.destroy()
+
+    app.protocol('WM_DELETE_WINDOW', quit)
     app.mainloop()
+
+    
+    
+    
