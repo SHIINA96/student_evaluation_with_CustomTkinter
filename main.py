@@ -1,7 +1,7 @@
 import tkinter
 import tkinter.messagebox
 import customtkinter
-import os, shutil, requests, datetime, time
+import os, shutil, requests, datetime, time, platform
 
 from threading import Thread
 from ics import Calendar
@@ -15,10 +15,6 @@ from docx2pdf import convert
 from docx.shared import Cm
 from dotenv import load_dotenv
 
-
-basedir = os.path.dirname(__file__)
-load_dotenv()   # 使用dotenv保存日历链接
-calender_url = os.environ.get('CALENDAR_URL')
 customtkinter.set_appearance_mode("Light")  # Modes: "System" (standard), "Dark", "Light"
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
@@ -208,15 +204,12 @@ class App(customtkinter.CTk):
     #     print("CTkInputDialog:", dialog.get_input())
 
     def genereate_report_event(self):   # 生成课程评价，并添加照片
-        dir_path = os.path.dirname(os.path.realpath(__file__))
 
         pict = Image.open(f_path[0])
         exif_data = pict._getexif()
         picDate = exif_data[36867]
         pict.close()
 
-        # name = docList[0]
-        name = doc_path
         communication = int(self.seg_button_1.get())
         creation = int(self.seg_button_2.get())
         co_operation = int(self.seg_button_3.get())
@@ -231,7 +224,7 @@ class App(customtkinter.CTk):
         month = picDate[5:7]
         day = picDate[8:10]
 
-        saving_folder = saving_location+'/'+student_name
+        saving_folder = os.path.join(saving_location,student_name)
         number = 0
         while True: # 检测保存目录是否存在，存在则在文件夹后增加数字
             if not os.path.exists(saving_folder):
@@ -241,8 +234,7 @@ class App(customtkinter.CTk):
                 number += 1
                 saving_folder = saving_folder + str(number)
 
-        doc = DocxTemplate(name) #加载模板文件
-        document = Document(name)
+        doc = DocxTemplate(doc_path) #加载模板文件
 
         data_dic = {
             'teacher_name' : teacher_name,
@@ -257,22 +249,24 @@ class App(customtkinter.CTk):
             'month' : month,
             'day' : day
         }
-        doc.render(data_dic) #填充数据
+        doc.render(data_dic) # 填充数据
         table = doc.tables[0] # 获取课程名称
         global lessonName
         lessonName = table.cell(1, 1).text
-        documentName = student_name+lessonName+str(year)+str(month)+str(day)+'课评报告.docx'
-        doc.save(documentName) #保存目标文件
 
-        docAddPicName = documentName
+        document_name = student_name+lessonName+str(year)+str(month)+str(day)+'课评报告.docx'   # 文件名称格式为：学生姓名 课程名 日期
+
+        doc.save(os.path.join(base_dir,document_name)) #保存目标文件
+
+        docAddPicName = os.path.join(base_dir,document_name)
         docAddPic = Document(docAddPicName)
         paragraph = docAddPic.add_paragraph()
 
         # 检测图片是否需要旋转
         n = 0
-        for picName in f_path:
+        for pic_name in f_path:
             try:
-                image=Image.open(picName)
+                image=Image.open(pic_name)
                 for orientation in ExifTags.TAGS.keys():
                     if ExifTags.TAGS[orientation]=='Orientation':
                         break
@@ -288,24 +282,28 @@ class App(customtkinter.CTk):
                 except:
                     # print('no need to process!')
                     pass
-                image.save(picName)
+                image.save(pic_name)
                 image.close()
 
                 # 添加照片到文件中
                 run = paragraph.add_run()
-                run.add_picture(picName, width=Cm(6))
-                docAddPic.save(documentName)
+                run.add_picture(pic_name, width=Cm(6))
+                docAddPic.save(os.path.join(base_dir,document_name))
                 print('photo added!')
                 image.close()
 
                 # 更改照片名
-                picNameStandard = student_name+year+month+day+'_'+str(n)+'.jpg'
-                os.rename(picName, picNameStandard)
+                pic_name_standard = student_name+year+month+day+'_'+str(n)+'.jpg'
+                pic_path = os.path.split(pic_name)[0]
+                os.rename(pic_name, os.path.join(pic_path,pic_name_standard))
                 n = n+1
 
                 # 移动照片与课评文档至保存路径中
-                shutil.move(dir_path+'/'+picNameStandard, saving_folder+'/'+picNameStandard)
-                shutil.move(dir_path+'/'+documentName, saving_folder+'/'+documentName)
+                print('照片原文件名：',pic_name)
+                print('照片新文件名：',pic_name_standard)
+
+                shutil.move(pic_path+'/'+pic_name_standard, saving_folder+'/'+pic_name_standard)
+                shutil.move(base_dir+'/'+document_name, saving_folder+'/'+document_name)
                 
                 info = '已生成' + ' ' + student_name + '_' + lessonName + ' ' + '课评报告'
                 self.pass_info_2_top_level(info=info)
@@ -319,8 +317,7 @@ class App(customtkinter.CTk):
         root = tkinter.Tk()
         root.withdraw()
         global doc_path
-        # os.startfile(str(os.getcwd())+'\\assest\\课程评价')
-        doc_path = filedialog.askopenfilename(initialdir=(basedir+'/assest/课程评价'))
+        doc_path = filedialog.askopenfilename(initialdir=(os.path.join(assest_dir,'课程评价')))
         self.entry_template.insert("0", doc_path)
 
     def select_photo_event(self):   # 选择课程评价中的照片
@@ -345,9 +342,9 @@ class App(customtkinter.CTk):
         saving_location = filedialog.askdirectory()
         self.entry_2.insert("0", saving_location)
         # 使用保存目录按钮测试弹出窗口
-        # info = 'wait'
+        # info = basedir
         # if self.toplevel_window is None or not self.toplevel_window.winfo_exists():
-        #     self.toplevel_window = self.pass_info_2_top_level(info=info,progress_bar=True)  # create window if its None or destroyed
+        #     self.toplevel_window = self.pass_info_2_top_level(info=info)  # create window if its None or destroyed
         # else:
         #     self.toplevel_window.focus()  # if window exists focus it
         
@@ -362,9 +359,9 @@ class App(customtkinter.CTk):
 
     def convert_2_PDF(self):  # 将保存目录中的word文件全部转换为pdf文件
         try:
-            shutil.rmtree('temp')
+            shutil.rmtree(temp_dir)
         except:
-            os.mkdir('temp')
+            os.mkdir(temp_dir)
 
         try:
             folder_path = saving_location
@@ -379,8 +376,7 @@ class App(customtkinter.CTk):
                     path = os.path.join(dir, i)
                     if os.path.isfile(path):  # 判断是否为一个文件，排除文件夹
                         if os.path.splitext(path)[1]==".docx":  # 判断文件扩展名是否为“.docx”
-                            temp_path = 'temp/' + os.path.split(path)[1]
-                            shutil.copy2(path, temp_path)
+                            shutil.copy2(path, os.path.join(temp_dir,os.path.split(path)[1]))   # 移动docx文件到temp中
                             file_list.append(path)
                     elif os.path.isdir(path):
                         newdir=path
@@ -394,15 +390,15 @@ class App(customtkinter.CTk):
         output = CrossOver(folder_path, file_list)   # 执行函数，输出结果
         print('已获取' + folder_path + '中的' + str(output) + '个文件')
         
-        convert('temp/')    # 批量转换保存目录中的word文档
+        convert(temp_dir)    # 批量转换保存目录中的word文档
 
         count = 0
-        for old_file in os.listdir('temp'):
+        for old_file in os.listdir(temp_dir):
             if os.path.split(old_file)[1].endswith('.pdf'):
                 count += 1
-                new_file = saving_location + '/' + os.path.split(old_file)[1]
-                shutil.copyfile('temp/'+old_file, new_file)
-        shutil.rmtree('temp')
+                new_file = os.path.join(saving_location, os.path.split(old_file)[1])
+                shutil.copyfile(os.path.join(temp_dir,old_file), new_file)
+        shutil.rmtree(temp_dir)
 
         info = '已转换' + str(count) + '个文件为PDF'
         print(info)
@@ -417,6 +413,12 @@ class App(customtkinter.CTk):
         # print('正在导出', dialog.get_input(),'月课时统计')
     
     def statistics(self, month):     # 统计本月的教师课时
+        try:
+            os.mkdir(temp_dir)
+        except:
+            shutil.rmtree(temp_dir)
+            os.mkdir(temp_dir)
+
         c = Calendar(requests.get(calender_url).text)
 
         now = datetime.datetime.now()
@@ -450,7 +452,7 @@ class App(customtkinter.CTk):
         class_in_total.sort()
         print('日历中共有'+str(len(class_in_total))+'项日程')
 
-        wb = load_workbook(filename = 'assest/教师课时统计表模板.xlsx')
+        wb = load_workbook(os.path.join(assest_dir, '教师课时统计表模板.xlsx'))
         ws = wb.active
 
         cols = {'启蒙':2, '玛塔':5, '程小奔':5, '探究':8, '工程':11, 'Scratch':14, 'Python':14, '南开':17, '普林斯顿':17, '博苑澳森':17, '考古营':24, '医学营':24}
@@ -478,27 +480,28 @@ class App(customtkinter.CTk):
                         ws.cell(row=row, column=col+3, value=calender_list_item[3])
                         print('已添加',time_value,course,calender_list_item[3],'人')
                         row += 1
-                        wb.save(filename='教师课时统计表模板.xlsx')
+                        wb.save(os.path.join(temp_dir,'教师课时统计表模板.xlsx'))
                     else:
                         ws.cell(row=row, column=col, value=time_value)
                         ws.cell(row=row, column=col+1, value=calender_list_item[2])
                         ws.cell(row=row, column=col+2, value=calender_list_item[3])
                         print('已添加',time_value,course,calender_list_item[3],'人')
                         row += 1
-                        wb.save(filename='教师课时统计表模板.xlsx')
+                        wb.save(os.path.join(temp_dir,'教师课时统计表模板.xlsx'))
 
         for item in class_in_total:
             insert_course_information(item, item[0])
         print('已导入'+str(len(class_in_total))+'项日程')
 
-        os.rename('教师课时统计表模板.xlsx', new_file_name)
-        dir_path = os.path.dirname(os.path.realpath(__file__))
+        os.rename(os.path.join(temp_dir,'教师课时统计表模板.xlsx'), os.path.join(temp_dir,new_file_name))
         try:
-            shutil.move(dir_path+'/'+new_file_name, saving_location+'/'+new_file_name)
+            shutil.move(os.path.join(temp_dir,new_file_name), os.path.join(saving_location,new_file_name))
             self.pass_info_2_top_level(info='已生成'+' '+new_file_name)
         except NameError:
             self.pass_info_2_top_level(info='未选择保存目录')
-            os.remove(new_file_name)
+            # os.remove(os.path.join(saving_location,new_file_name))
+        shutil.rmtree(temp_dir)
+        
 
 
     def pass_info_2_top_level(self, info, progress_bar=False):
@@ -518,15 +521,34 @@ class App(customtkinter.CTk):
     
 
 if __name__ == "__main__":
-    # root.protocol("WM_DELETE_WINDOW", _quit)
+
+    base_dir = os.path.dirname(__file__)
+    if(str(platform.system()) =="Windows"):
+        print ("Call Windows tasks")
+        assest_dir = os.path.abspath(os.path.join(base_dir,'assest'))
+        temp_dir = os.path.abspath(os.path.join(base_dir,'temp'))
+    elif(str(platform.system()) == "Darwin"):
+        print ("Call MacOS tasks")
+        base_dir = os.path.abspath(os.path.join(base_dir,'../../..'))
+        assest_dir = os.path.abspath(os.path.join(base_dir,'main/assest'))
+        temp_dir = os.path.abspath(os.path.join(base_dir,'main/temp'))
+        # 使用终端调试Pyinstaller时使用
+        # assest_dir = os.path.abspath(os.path.join(base_dir,'assest'))
+        # temp_dir = os.path.abspath(os.path.join(base_dir,'temp'))
+    print('程序运行在：',base_dir)
+    print('依赖文件在：',assest_dir)
+    print('临时文件在：',temp_dir)
+
+    
+    load_dotenv(dotenv_path=os.path.join(assest_dir, '.env'))   # 使用dotenv保存日历链接
+    calender_url = os.environ.get('CALENDAR_URL')
+    print(calender_url)
+
     app = App()
+
     def quit():
         app.quit()
         app.destroy()
-
     app.protocol('WM_DELETE_WINDOW', quit)
-    app.mainloop()
 
-    
-    
-    
+    app.mainloop()
